@@ -1,0 +1,1432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gentai Battery Monitor</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2;
+  --surface-1: #fcfcfb;
+  --border: #e3e2de;
+  --grid: #ecebe7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --series-1: #2a78d6;
+  --series-1-soft: rgba(42,120,214,.12);
+  --good: #0ca30c; --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --accent: #2a78d6;
+  --accent-text: #ffffff;
+  --charge: #1f9d55; --charge-soft: rgba(31,157,85,.14);
+  --discharge: #e0703a; --discharge-soft: rgba(224,112,58,.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-1-soft: rgba(57,135,229,.16);
+    --good-text: #0ca30c; --accent: #3987e5;
+    --charge: #34c06e; --charge-soft: rgba(52,192,110,.16);
+    --discharge: #f08a52; --discharge-soft: rgba(240,138,82,.16);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface-1: #1a1a19; --border: #2e2e2b; --grid: #262624;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-1-soft: rgba(57,135,229,.16);
+  --good-text: #0ca30c; --accent: #3987e5;
+  --charge: #34c06e; --charge-soft: rgba(52,192,110,.16);
+  --discharge: #f08a52; --discharge-soft: rgba(240,138,82,.16);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+.sub { color: var(--text-secondary); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select {
+  font: inherit; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-primary); padding: 7px 12px; cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 13px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-1); font-size: 12px; color: var(--text-secondary); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.dot.ok { background: var(--good); } .dot.busy { background: var(--warning); } .dot.err { background: var(--critical); }
+
+.grid { display: grid; gap: 12px; }
+.kpis { grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(0, 1fr)); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text-secondary); }
+.tile .label { font-size: 12px; color: var(--text-secondary); }
+.tile .value { font-size: 26px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tile .value small { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.tile .meta { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.stack { display: grid; gap: 12px; }
+.flow { border-top: 3px solid var(--charge); }
+.flow.out { border-top-color: var(--discharge); }
+.flow .label { display: flex; align-items: center; gap: 6px; }
+.flow .arrow { font-weight: 700; color: var(--charge); }
+.flow.out .arrow { color: var(--discharge); }
+.flow .value2 { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.flow .value2 small { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-left: 2px; }
+.flow.active { background: var(--charge-soft); }
+.flow.out.active { background: var(--discharge-soft); }
+.flow:not(.active) .value, .flow:not(.active) .value2 { color: var(--text-muted); }
+.hist-head { flex-wrap: wrap; align-items: center; margin-bottom: 4px; }
+.hist-head h2 { margin: 0; }
+.hist-label { min-width: 150px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hist-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+.hist-sum .t { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.hist-sum .n { font-size: 12px; color: var(--text-secondary); }
+.hist-sum .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hist-sum .s { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.legend { display: inline-flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.soc { display: flex; gap: 16px; align-items: center; }
+.soc svg { flex: none; }
+.soc .big { font-size: 40px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.row2 { grid-template-columns: 2fr 1fr; margin-top: 12px; }
+.row3 { grid-template-columns: 1fr 1fr; margin-top: 12px; }
+.status-list { display: grid; gap: 8px; }
+.status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.status svg { flex: none; }
+.temps { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.temps .t { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.temps .t .n { font-size: 12px; color: var(--text-secondary); }
+.temps .t .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+  white-space: nowrap; display: none; font-variant-numeric: tabular-nums; z-index: 2;
+}
+.axis text { fill: var(--text-muted); font-size: 11px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chart-head .stat { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tabs { display: inline-flex; gap: 4px; }
+.tabs button { padding: 3px 9px; font-size: 12px; }
+.tabs button[aria-pressed="true"] { background: var(--series-1-soft); border-color: var(--series-1); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--grid); }
+th { color: var(--text-secondary); font-weight: 600; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+#log { font: 12px/1.4 ui-monospace, Consolas, monospace; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; color: var(--text-secondary); margin-top: 8px; }
+.notice { background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--warning); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; display: none; }
+.info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.info dt { color: var(--text-secondary); } .info dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis .soc-card { grid-column: 1 / -1; }
+  .row2, .row3 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Gentai Battery Monitor</h1>
+      <div class="sub" id="devname">Not connected</div>
+    </div>
+    <div class="controls">
+      <span class="pill" id="connpill"><span class="dot" id="conndot"></span><span id="conntext">Idle</span></span>
+      <label class="chk" title="List every Bluetooth device instead of only names that look like Gentai / JBD packs"><input type="checkbox" id="allDevices"> Show all devices</label>
+      <label class="chk" title="Reconnect to the last battery automatically when the dashboard starts"><input type="checkbox" id="autoConnect" checked> Auto-connect</label>
+      <select id="interval" title="Polling interval">
+        <option value="1000">1 s</option><option value="2000" selected>2 s</option><option value="5000">5 s</option><option value="10000">10 s</option>
+      </select>
+      <button class="primary" id="btnConnect">Connect battery</button>
+      <button id="btnDemo">Demo data</button>
+      <button id="btnCsv" disabled>Export CSV</button>
+      <button id="btnResetTotals" title="Reset the charged-in / discharged-out totals">Reset totals</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice"></div>
+
+  <section class="grid kpis">
+    <div class="card soc-card">
+      <h2>State of charge</h2>
+      <div class="soc">
+        <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+          <circle cx="48" cy="48" r="40" fill="none" stroke="var(--grid)" stroke-width="10"/>
+          <circle id="socArc" cx="48" cy="48" r="40" fill="none" stroke="var(--series-1)" stroke-width="10"
+                  stroke-linecap="round" stroke-dasharray="0 252" transform="rotate(-90 48 48)"/>
+        </svg>
+        <div>
+          <div class="big" id="soc">--<small style="font-size:18px">%</small></div>
+          <div class="tile meta" id="socMeta">-- / -- Ah</div>
+          <div class="tile meta" id="eta">&nbsp;</div>
+        </div>
+      </div>
+    </div>
+    <div class="card tile"><div class="label">Pack voltage</div><div class="value" id="volt">--<small>V</small></div><div class="meta" id="voltMeta">&nbsp;</div></div>
+    <div class="card tile flow in" id="flowIn">
+      <div class="label"><span class="arrow">▼</span>Charging · into battery</div>
+      <div class="value" id="inA">--<small>A</small></div>
+      <div class="value2" id="inW">--<small>W</small></div>
+      <div class="meta" id="inTot">&nbsp;</div>
+    </div>
+    <div class="card tile flow out" id="flowOut">
+      <div class="label"><span class="arrow">▲</span>Discharging · out of battery</div>
+      <div class="value" id="outA">--<small>A</small></div>
+      <div class="value2" id="outW">--<small>W</small></div>
+      <div class="meta" id="outTot">&nbsp;</div>
+    </div>
+  </section>
+
+  <section class="grid row2">
+    <div class="card">
+      <div class="chart-head">
+        <h2 id="trendTitle">Current (A)</h2>
+        <div class="tabs" role="group" aria-label="Trend metric" id="trendTabs">
+          <button data-m="current" aria-pressed="true">Current</button>
+          <button data-m="voltage" aria-pressed="false">Voltage</button>
+          <button data-m="power" aria-pressed="false">Power</button>
+          <button data-m="soc" aria-pressed="false">SOC</button>
+        </div>
+      </div>
+      <div class="chart" id="trendChart"></div>
+      <div class="chart-head">
+        <span class="legend" id="trendLegend"><span><i style="background:var(--charge)"></i>Charging (above 0)</span><span><i style="background:var(--discharge)"></i>Discharging (below 0)</span></span>
+        <span class="stat" id="trendStat"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Health &amp; protection</h2>
+      <div class="status-list" id="statusList"></div>
+      <div style="height:12px"></div>
+      <dl class="info">
+        <dt>Cycles</dt><dd id="cycles">--</dd>
+        <dt>Health</dt><dd id="soh">--</dd>
+        <dt>Full capacity</dt><dd id="design">--</dd>
+        <dt>Balancing</dt><dd id="balancing">--</dd>
+        <dt>BMS type</dt><dd id="bmsType">--</dd>
+        <dt>BMS model</dt><dd id="bmsName">--</dd>
+        <dt>Firmware</dt><dd id="fw">--</dd>
+        <dt>Production date</dt><dd id="mfgDate">--</dd>
+        <dt>Last update</dt><dd id="updated">--</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="grid row3">
+    <div class="card">
+      <div class="chart-head">
+        <h2>Cell voltages (V)</h2>
+        <span class="stat" id="cellStat"></span>
+      </div>
+      <div class="chart" id="cellChart"></div>
+      <details style="margin-top:8px"><summary>Table view</summary><table id="cellTable"></table></details>
+    </div>
+    <div class="card">
+      <h2>Temperatures (°C)</h2>
+      <div class="temps" id="temps"><div class="sub">No data yet</div></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px" id="histCard">
+    <div class="chart-head hist-head">
+      <h2>History <span class="stat">· saved every 30 min</span></h2>
+      <div class="controls">
+        <div class="tabs" role="group" aria-label="History range" id="histRange">
+          <button data-r="day" aria-pressed="true">Day</button>
+          <button data-r="week" aria-pressed="false">Week</button>
+          <button data-r="month" aria-pressed="false">Month</button>
+        </div>
+        <button id="histPrev" aria-label="Previous period">‹</button>
+        <span class="hist-label" id="histLabel">--</span>
+        <button id="histNext" aria-label="Next period">›</button>
+        <button id="histToday">Today</button>
+        <button id="histCsv" disabled>Export CSV</button>
+      </div>
+    </div>
+    <div class="hist-sum" id="histSum"></div>
+    <div class="grid row3">
+      <div>
+        <div class="chart-head"><h2 id="histEnergyTitle">Energy in / out (Wh)</h2></div>
+        <div class="chart" id="histEnergy"></div>
+        <div class="chart-head"><span class="legend"><span><i style="background:var(--charge)"></i>Charged in</span><span><i style="background:var(--discharge)"></i>Discharged out</span></span></div>
+      </div>
+      <div>
+        <div class="chart-head">
+          <h2 id="histLineTitle">State of charge (%)</h2>
+          <div class="tabs" role="group" aria-label="History metric" id="histMetric">
+            <button data-h="soc" aria-pressed="true">SOC</button>
+            <button data-h="voltage" aria-pressed="false">Voltage</button>
+            <button data-h="current" aria-pressed="false">Current</button>
+            <button data-h="temp" aria-pressed="false">Temp</button>
+          </div>
+        </div>
+        <div class="chart" id="histLine"></div>
+        <div class="chart-head"><span class="legend"><span><i style="background:var(--series-1)"></i>30-min average</span><span><i style="background:var(--series-1-soft)"></i>min–max</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:12px">
+    <details>
+      <summary>Bluetooth log (raw frames)</summary>
+      <div id="log"></div>
+    </details>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+ * Gentai Power LiFePO4 batteries ship with more than one BMS, so two protocols are built in and the
+ * right one is detected on connect (see DRIVERS below):
+ *
+ *   HumsiENK (e.g. packs advertising as "DCH842F")
+ *     Service 0001 · write 0002 · notify 0003
+ *     Frame: AA cmd len data.. chkLo chkHi      chk = 16-bit sum of cmd, len and data (little-endian)
+ *     Commands: 0x00 handshake, 0x20 status, 0x21 battery info, 0x22 cells, 0x11 model, 0xF5 firmware
+ *
+ *   JBD / Jiabaida / Xiaoxiang (listed by Gentai as "Built in JBD BMS")
+ *     Service FF00 (or HM-10 style FFE0 / FFF0 modules)
+ *     Request:  DD A5 cmd 00 chkHi chkLo 77         chk = 0x10000 - (cmd + len)
+ *     Response: DD cmd status len data.. chkHi chkLo 77   chk = 0x10000 - sum(status, len, data)
+ *     Commands: 0x03 basic info, 0x04 cell voltages, 0x05 device name
+ *
+ * Reference: aiobmsble "humsienk_bms" and "jbd_bms" plugins (Apache-2.0), used by Home Assistant BMS_BLE.
+ * ============================================================ */
+const uuid16 = (x) => `0000${x}-0000-1000-8000-00805f9b34fb`;
+const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join(" ");
+const u16 = (b, i) => (b[i] << 8) | b[i + 1];                                  // big-endian (JBD)
+const s16 = (b, i) => { const v = u16(b, i); return v & 0x8000 ? v - 0x10000 : v; };
+const le16 = (b, i) => b[i] | (b[i + 1] << 8);                                 // little-endian (HumsiENK)
+const le24 = (b, i) => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16);
+const le32s = (b, i) => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24);
+const le32 = (b, i) => le32s(b, i) >>> 0;
+const s8 = (v) => (v > 127 ? v - 256 : v);
+const ascii = (b) => new TextDecoder().decode(b).replace(/[\0-\x1f].*$/s, "").trim();
+const bitList = (bits, n) => { const out = []; for (let i = 0; i < n; i++) if (Math.floor(bits / 2 ** i) % 2) out.push(i + 1); return out; };
+
+/* ---------- state ---------- */
+const S = {
+  device: null, server: null, notifyChr: null, writeChr: null,
+  polling: null, busy: false, demo: null,
+  rx: [], rxAt: 0, waiters: new Map(),
+  data: {}, history: [],
+};
+const MAX_HISTORY = 1800;
+
+/* ---------- logging & UI status ---------- */
+const logEl = document.getElementById("log");
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent.slice(0, 20000);
+}
+function setConn(state, text) {
+  const d = document.getElementById("conndot");
+  d.className = "dot" + (state ? " " + state : "");
+  document.getElementById("conntext").textContent = text;
+  relay({ conn: { state, text }, device: document.getElementById("devname").textContent });
+}
+
+/* ---------- remote relay ----------
+ * ROLE "local": this window owns the Bluetooth link and pushes readings to serve.js.
+ * ROLE "remote": opened through the internet tunnel; read-only view of what the local window relays.
+ */
+let ROLE = "local";
+// No `keepalive: true` here: the browser caps keepalive requests at ~64 KB in flight per page and the quota
+// leaked, so after a few hundred readings every relay was silently rejected.
+let relayFailing = false;
+function relay(msg) {
+  if (ROLE !== "local") return;
+  fetch("/api/data", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(msg) })
+    .then((r) => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      if (relayFailing) { relayFailing = false; log("Relay to server working again"); }
+    })
+    .catch((e) => {   // server restarting: drop this reading, the next one will get through
+      if (!relayFailing) { relayFailing = true; log("Relay to server failed (remote viewers won't update): " + e.message); }
+    });
+}
+function notice(msg) {
+  const n = document.getElementById("notice");
+  n.style.display = msg ? "block" : "none";
+  n.innerHTML = msg || "";
+}
+
+/* ---------- protocol drivers ----------
+ * Each driver knows its Bluetooth services, how to build a request, how to recognise and check a reply frame,
+ * and how to turn replies into one reading. Readings use the same field names for every BMS, and alarms come
+ * as a ready-made list of [severity, text] so the page doesn't need to know which BMS is connected.
+ */
+const HS_ALARMS = {
+  0: ["critical", "Charge overcurrent protection"], 1: ["critical", "Charge over-temperature protection"],
+  2: ["critical", "Charge under-temperature protection"], 3: ["critical", "Cell overvoltage protection"],
+  4: ["critical", "Pack overvoltage protection"], 5: ["critical", "BMS front-end (AFE) error"],
+  6: ["warning", "Charging stopped"], 8: ["warning", "Charge overcurrent warning"],
+  9: ["warning", "Charge over-temperature warning"], 10: ["warning", "Charge under-temperature warning"],
+  11: ["warning", "Cell overvoltage warning"], 12: ["warning", "Pack overvoltage warning"],
+  13: ["warning", "Cell voltage difference warning"], 14: ["critical", "Cell voltage difference too large"],
+  16: ["critical", "Discharge overcurrent protection"], 17: ["critical", "Discharge over-temperature protection"],
+  18: ["critical", "Discharge under-temperature protection"], 19: ["critical", "Cell undervoltage protection"],
+  20: ["critical", "Short circuit protection"], 21: ["critical", "Pack undervoltage protection"],
+  22: ["warning", "Discharging stopped"], 24: ["warning", "Discharge overcurrent warning"],
+  25: ["warning", "Discharge over-temperature warning"], 26: ["warning", "Discharge under-temperature warning"],
+  27: ["warning", "Cell undervoltage warning"], 28: ["warning", "Pack undervoltage warning"],
+  29: ["warning", "MOSFET over-temperature warning"], 30: ["critical", "MOSFET over-temperature protection"],
+  31: ["good", "Pre-discharge MOSFET on"],
+};   // bits 7, 15, 23 are the charge MOSFET, heater and discharge MOSFET switch states, not alarms
+// 0x20 status: [0-3] uptime, [4-7] flags, [8-10] balancing cells, [11-13] disconnected cells.
+function hsStatus(b) {
+  if (b.length < 14) throw new Error("status too short (" + b.length + " bytes)");
+  const op = le32(b, 4), disconnected = bitList(le24(b, 11), 24);
+  const alarms = Object.entries(HS_ALARMS).filter(([bit]) => Math.floor(op / 2 ** bit) % 2).map(([, a]) => a);
+  disconnected.forEach((c) => alarms.push(["critical", `Cell ${c} disconnected`]));
+  return {
+    chargeFet: !!(op & 0x80), heater: !!(op & 0x8000), dischargeFet: !!(op & 0x800000),
+    problem: (op & 0xFF7F7F7F) >>> 0, balancing: bitList(le24(b, 8), 24), alarms,
+  };
+}
+// 0x21 battery info: voltage mV, current mA, SOC %, SOH %, remaining / full mAh, cycles, 6 temperatures °C.
+function hsBattery(b) {
+  if (b.length < 20) throw new Error("battery info too short (" + b.length + " bytes)");
+  const voltage = le32(b, 0) / 1000, current = le32s(b, 4) / 1000;
+  const temps = [];
+  for (let i = 20; i < Math.min(26, b.length); i++) temps.push(s8(b[i]));
+  return {
+    voltage, current, power: voltage * current, soc: b[8], soh: b[9],
+    remaining: le32(b, 10) / 1000, design: Math.round(le32(b, 14) / 1000), cycles: le16(b, 18),
+    temps, tempNames: ["Cell 1", "Cell 2", "Cell 3", "Cell 4", "MOSFET", "Ambient"],
+  };
+}
+// 0x22 cell voltages: up to 24 cells, mV little-endian; unused slots read 0.
+function hsCells(b) {
+  const cells = [];
+  for (let i = 0; i + 1 < b.length; i += 2) { const v = le16(b, i); if (v) cells.push(v / 1000); }
+  return cells;
+}
+const HUMSIENK = {
+  name: "HumsiENK",
+  transports: [{ name: "HumsiENK (service 0001)", svc: uuid16("0001"), notify: uuid16("0003"), write: uuid16("0002") }],
+  build: (cmd) => new Uint8Array([0xAA, cmd, 0x00, cmd & 0xFF, 0x00]),   // checksum of [cmd, 0] = cmd
+  isStart: (c) => c.length >= 3 && c[0] === 0xAA,
+  need: (rx) => (rx.length >= 3 ? rx[2] + 5 : 0),
+  decode(f) {
+    const n = f.length, chk = le16(f, n - 2);
+    let sum = 0; for (let i = 1; i < n - 2; i++) sum += f[i];
+    if ((sum & 0xFFFF) !== chk) return { cmd: f[1], error: `checksum mismatch (got ${chk.toString(16)}, want ${(sum & 0xFFFF).toString(16)})` };
+    return { cmd: f[1], data: f.slice(3, n - 2) };
+  },
+  async start() {                       // the handshake doubles as detection: only a HumsiENK BMS answers it
+    await send(0x00);
+    const info = { bmsType: "HumsiENK", mfgDate: null };
+    try { info.bmsName = ascii(await send(0x11)); } catch (e) { log("Model not available (" + e.message + ")"); }
+    try { info.fw = ascii(await send(0xF5)); } catch (e) { log("Firmware version not available (" + e.message + ")"); }
+    return info;
+  },
+  async read() {
+    const out = { ...hsStatus(await send(0x20)), ...hsBattery(await send(0x21)) };
+    try { out.cells = hsCells(await send(0x22)); } catch (e) { log("Cell voltages: " + e.message); }
+    return out;
+  },
+};
+
+function jbdChecksum(bytes) { let s = 0; for (const b of bytes) s += b; return (0x10000 - s) & 0xFFFF; }
+const JBD = {
+  name: "JBD",
+  // The same JBD frames travel over different Bluetooth modules; each is tried in turn.
+  transports: [
+    { name: "JBD (service FF00)", svc: uuid16("ff00"), notify: uuid16("ff01"), write: uuid16("ff02") },
+    { name: "JBD over HM-10 module (FFE0)", svc: uuid16("ffe0"), notify: uuid16("ffe1"), write: uuid16("ffe1") },
+    { name: "JBD over FFF0 module", svc: uuid16("fff0"), notify: uuid16("fff1"), write: uuid16("fff2") },
+    { name: "JBD over FFE0 split module", svc: uuid16("ffe0"), notify: uuid16("ffe4"), write: uuid16("ffe9") },
+  ],
+  build(cmd) { const c = jbdChecksum([cmd, 0x00]); return new Uint8Array([0xDD, 0xA5, cmd, 0x00, c >> 8, c & 0xFF, 0x77]); },
+  isStart: (c) => c.length >= 4 && c[0] === 0xDD && [0x03, 0x04, 0x05].includes(c[1]),
+  need: (rx) => (rx.length >= 4 ? 7 + rx[3] : 0),
+  decode(f) {
+    const cmd = f[1], status = f[2], len = f[3];
+    if (f[f.length - 1] !== 0x77) return { cmd, error: "missing end byte" };
+    const chkRx = u16(f, 4 + len), chkCalc = jbdChecksum(f.slice(2, 4 + len));
+    if (chkRx !== chkCalc) return { cmd, error: `checksum mismatch (got ${chkRx.toString(16)}, want ${chkCalc.toString(16)})` };
+    if (status !== 0) return { cmd, error: `BMS returned status 0x${status.toString(16)}` };
+    return { cmd, data: f.slice(4, 4 + len) };
+  },
+  async start() {
+    const b = parseBasic(await send(0x03));
+    const info = { bmsType: "JBD", fw: b.fw, mfgDate: b.mfgDate, soh: null };
+    try { info.bmsName = ascii(await send(0x05)); } catch (e) { log("Device name not available (" + e.message + ")"); }
+    return info;
+  },
+  async read() {
+    const out = parseBasic(await send(0x03));
+    try { out.cells = parseCells(await send(0x04)); } catch (e) { log("Cell voltages: " + e.message); }
+    return out;
+  },
+};
+const DRIVERS = [HUMSIENK, JBD];
+let P = null;   // the driver in use
+
+// Services the browser may look at. Web Bluetooth hides any service not listed here, so the list also covers
+// other common BMS modules: if no driver answers, the log shows what the device really offers.
+const PROBE_SERVICES = [...new Set([...DRIVERS.flatMap((d) => d.transports.map((t) => t.svc)), uuid16("ffd0"), uuid16("ffb0"),
+  uuid16("ffc0"), uuid16("fee7"), uuid16("fa00"), uuid16("ff10"), uuid16("180a"), "6e400001-b5a3-f393-e0a9-e50e24dcca9e"])];
+
+/* ---------- frame reassembly ----------
+ * A reply can be longer than one BLE packet, so chunks are joined until the driver says the frame is complete.
+ */
+function onNotify(ev) {
+  const v = ev.target.value;
+  const chunk = new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
+  log("RX " + hex(chunk));
+  if (!P) return;
+  if (S.rx.length && Date.now() - S.rxAt > 1500) S.rx = [];          // drop a stale half-received frame
+  if (S.rx.length === 0) { if (!P.isStart(chunk)) return; S.rxAt = Date.now(); }
+  S.rx.push(...chunk);
+  const need = P.need(S.rx);
+  if (need && S.rx.length >= need) { const f = new Uint8Array(S.rx.slice(0, need)); S.rx = []; handleFrame(f); }
+}
+function handleFrame(f) {
+  const r = P.decode(f);
+  if (r.error) { log(`${P.name} reply 0x${(r.cmd ?? 0).toString(16)} dropped: ${r.error}`); return; }
+  const w = S.waiters.get(r.cmd);
+  if (w) { S.waiters.delete(r.cmd); w(r.data); }                    // hand over the data bytes only
+}
+function awaitFrame(cmd, ms = 2500) {
+  return new Promise((resolve, reject) => {
+    const to = setTimeout(() => { S.waiters.delete(cmd); reject(new Error("timeout 0x" + cmd.toString(16))); }, ms);
+    S.waiters.set(cmd, (b) => { clearTimeout(to); resolve(b); });
+  });
+}
+async function send(cmd) {
+  const frame = P.build(cmd);
+  log("TX " + hex(frame));
+  const p = awaitFrame(cmd);
+  p.catch(() => {});   // if the write below fails we never await p; don't leave an unhandled rejection
+  // A GATT write can hang forever on a flaky link (Windows BLE stack); without a timeout polling stalls silently.
+  const write = S.writeChr.properties.writeWithoutResponse && S.writeChr.writeValueWithoutResponse
+    ? S.writeChr.writeValueWithoutResponse(frame) : S.writeChr.writeValue(frame);
+  await withTimeout(write, 3000, "write timeout");
+  return p;
+}
+function withTimeout(promise, ms, msg) {
+  let to;
+  return Promise.race([promise, new Promise((_, rej) => (to = setTimeout(() => rej(new Error(msg)), ms)))]).finally(() => clearTimeout(to));
+}
+
+/* ---------- JBD parsers ---------- */
+// 0x03 basic info. Offsets are into the data bytes.
+function parseBasic(b) {
+  if (b.length < 23) throw new Error("basic info too short (" + b.length + " bytes)");
+  const voltage = u16(b, 0) / 100;                 // 10 mV
+  const current = s16(b, 2) / 100;                 // 10 mA, positive = charging
+  const remaining = u16(b, 4) / 100;               // 10 mAh
+  const design = Math.round(u16(b, 6) / 10) / 10;  // full capacity, 10 mAh -> Ah (1 decimal)
+  const cycles = u16(b, 8);
+  const date = u16(b, 10);
+  const mfgDate = date ? `${(date >> 9) + 2000}-${String((date >> 5) & 0x0F).padStart(2, "0")}-${String(date & 0x1F).padStart(2, "0")}` : null;
+  const balanceBits = u16(b, 14) * 65536 + u16(b, 12);   // bit n = cell n+1 balancing
+  const problem = u16(b, 16);                       // protection flags, see JBD_PROTECTION
+  const ver = b[18];
+  const soc = b[19];
+  const fet = b[20];
+  const nCells = b[21], nTemps = b[22];
+  const temps = [];
+  for (let i = 0; i < nTemps && 24 + 2 * i < b.length; i++) temps.push((u16(b, 23 + 2 * i) - 2731) / 10);   // 0.1 K
+  const balancing = bitList(balanceBits, nCells);
+  const alarms = JBD_PROTECTION.filter((_, i) => problem & (1 << i))
+    .map((name) => [/short|chip|overcurrent/i.test(name) ? "critical" : "warning", "Protection: " + name]);
+  if (problem && !alarms.length) alarms.push(["warning", `Protection code 0x${problem.toString(16).padStart(4, "0")}`]);
+  return {
+    voltage, current, remaining, design, cycles, mfgDate, problem, soc, temps, balancing, nCells, alarms,
+    fw: `${ver >> 4}.${ver & 0x0F}`, chargeFet: !!(fet & 0x01), dischargeFet: !!(fet & 0x02),
+    power: voltage * current,
+  };
+}
+// 0x04 cell voltages: 2 bytes per cell, mV.
+function parseCells(b) {
+  const cells = [];
+  for (let i = 0; i + 1 < b.length; i += 2) cells.push(u16(b, i) / 1000);
+  return cells;
+}
+const JBD_PROTECTION = [
+  "Cell overvoltage", "Cell undervoltage", "Pack overvoltage", "Pack undervoltage",
+  "Charge over-temperature", "Charge under-temperature", "Discharge over-temperature", "Discharge under-temperature",
+  "Charge overcurrent", "Discharge overcurrent", "Short circuit", "BMS chip error", "MOSFETs locked by software",
+];
+
+/* ---------- BLE connect ---------- */
+async function connect() {
+  if (!navigator.bluetooth) {
+    notice("This browser has no Web Bluetooth. Open this page in <b>Chrome</b> or <b>Edge</b> on Windows, macOS, Android or ChromeOS, served from <code>http://localhost</code> or <code>https://</code>.");
+    return;
+  }
+  stopDemo();
+  clearTimeout(autoTimer); autoTries = 0;
+  notice("");
+  const all = document.getElementById("allDevices").checked;
+  const opts = {
+    optionalServices: PROBE_SERVICES,
+    ...(all ? { acceptAllDevices: true } : {
+      // HumsiENK packs advertise as DCH… / HS… / ECO…; JBD boards advertise the FF00 service or SP… / JBD… names.
+      filters: [
+        { services: [uuid16("0001")] }, { services: [uuid16("ff00")] }, { services: [uuid16("ffe0")] },
+        { namePrefix: "DCH" }, { namePrefix: "HS" }, { namePrefix: "ECO" },
+        { namePrefix: "GENTAI" }, { namePrefix: "Gentai" }, { namePrefix: "GT" },
+        { namePrefix: "SP" }, { namePrefix: "JBD" }, { namePrefix: "xiaoxiang" }, { namePrefix: "DP" },
+      ],
+    }),
+  };
+  try {
+    setConn("busy", "Choosing device…");
+    const dev = await navigator.bluetooth.requestDevice(opts);
+    attachDevice(dev);
+    await openGatt();
+    saveConfig({ deviceId: dev.id, deviceName: dev.name || null });
+  } catch (e) {
+    setConn("err", "Not connected");
+    try { if (S.device?.gatt.connected) S.device.gatt.disconnect(); } catch {}   // release the battery for the next try
+    if (e.name !== "NotFoundError") { log("Connect error: " + e.message); notice("Could not connect: " + e.message); }
+  }
+}
+function attachDevice(dev) {
+  if (S.device && S.device !== dev) S.device.removeEventListener("gattserverdisconnected", onDisconnected);
+  S.device = dev;
+  dev.removeEventListener("gattserverdisconnected", onDisconnected);
+  dev.addEventListener("gattserverdisconnected", onDisconnected);
+  document.getElementById("devname").textContent = dev.name || dev.id;
+}
+
+/* ---------- saved configuration (config.json via serve.js) ---------- */
+let CFG = {};
+async function loadConfig() {
+  try {
+    const r = await fetch("/api/config", { cache: "no-store" });
+    if (r.ok) CFG = await r.json();
+  } catch (e) { log("Could not load config: " + e.message); }
+  if (CFG.interval) document.getElementById("interval").value = String(CFG.interval);
+  if (CFG.allDevices != null) document.getElementById("allDevices").checked = !!CFG.allDevices;
+  if (CFG.autoConnect != null) document.getElementById("autoConnect").checked = !!CFG.autoConnect;
+  if (CFG.trendMetric && METRICS[CFG.trendMetric]) {
+    trendMetric = CFG.trendMetric;
+    document.querySelectorAll("#trendTabs button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.m === trendMetric));
+  }
+  return CFG;
+}
+async function saveConfig(patch) {
+  Object.assign(CFG, patch);
+  if (ROLE !== "local") return;
+  try {
+    const r = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    CFG = await r.json();
+  } catch (e) { log("Could not save config: " + e.message); }
+}
+
+/* ---------- auto-connect on start ----------
+ * Browsers only let a page open the device chooser after a click, but a device the user already picked
+ * can be reopened silently through navigator.bluetooth.getDevices(). start.bat launches Edge/Chrome with
+ * the flag that enables it. If the battery is out of range or asleep we keep retrying in the background.
+ */
+let autoTimer = null, autoTries = 0;
+async function autoConnect() {
+  clearTimeout(autoTimer);
+  if (!CFG.deviceId || !document.getElementById("autoConnect").checked || S.device?.gatt.connected || S.demo) return;
+  if (!navigator.bluetooth?.getDevices) {
+    notice(`Saved battery: <b>${CFG.deviceName || CFG.deviceId}</b>. This browser can't reconnect on its own; ` +
+      `start the dashboard with <code>start.bat</code>, or enable <code>chrome://flags/#enable-web-bluetooth-new-permissions-backend</code>, then press <b>Connect battery</b> once.`);
+    return;
+  }
+  const devices = await navigator.bluetooth.getDevices();
+  const dev = devices.find((d) => d.id === CFG.deviceId) || (CFG.deviceName && devices.find((d) => d.name === CFG.deviceName));
+  if (!dev) {
+    notice(`The browser no longer has permission for <b>${CFG.deviceName || "the saved battery"}</b>. Press <b>Connect battery</b> to pick it again.`);
+    return;
+  }
+  attachDevice(dev);
+  setConn("busy", "Auto-connecting…");
+  log(`Auto-connecting to ${dev.name || dev.id} (attempt ${++autoTries})`);
+  try {
+    // Wait for the pack to advertise before connecting (faster and avoids long GATT timeouts), when supported.
+    if (dev.watchAdvertisements && autoTries > 1) await waitForAdvert(dev, 15000).catch(() => {});
+    await openGatt();
+    autoTries = 0;
+    notice("");
+    if (dev.id !== CFG.deviceId) saveConfig({ deviceId: dev.id });
+  } catch (e) {
+    log("Auto-connect failed: " + e.message);
+    try { if (dev.gatt.connected) dev.gatt.disconnect(); } catch {}
+    const wait = Math.min(60000, 5000 * autoTries);
+    setConn("err", `Retrying in ${wait / 1000} s`);
+    notice(`Waiting for <b>${dev.name || "the battery"}</b>… make sure it is in range and the battery's phone app is closed.`);
+    autoTimer = setTimeout(autoConnect, wait);
+  }
+}
+function waitForAdvert(dev, ms) {
+  return new Promise((resolve, reject) => {
+    const ac = new AbortController();
+    const done = (ok) => { clearTimeout(to); ac.abort(); dev.removeEventListener("advertisementreceived", onAdv); ok ? resolve() : reject(new Error("no advertisement")); };
+    const onAdv = () => done(true);
+    const to = setTimeout(() => done(false), ms);
+    dev.addEventListener("advertisementreceived", onAdv);
+    dev.watchAdvertisements({ signal: ac.signal }).catch(() => done(false));
+  });
+}
+
+async function openGatt() {
+  setConn("busy", "Connecting…");
+  S.server = await gattConnect(S.device);
+  log(`GATT connected to ${S.device.name || "(no name)"}`);
+  // Try every driver over every Bluetooth layout it supports; the last one that worked goes first.
+  const all = DRIVERS.flatMap((driver) => driver.transports.map((t) => ({ driver, t })));
+  const order = S.found ? [S.found, ...all.filter((x) => x.t !== S.found.t)] : all;
+  let info = null;
+  for (const cand of order) {
+    let svc;
+    try { svc = await S.server.getPrimaryService(cand.t.svc); } catch { continue; }
+    try {
+      S.notifyChr = await svc.getCharacteristic(cand.t.notify);
+      S.writeChr = await svc.getCharacteristic(cand.t.write);
+      S.notifyChr.removeEventListener("characteristicvaluechanged", onNotify);
+      S.notifyChr.addEventListener("characteristicvaluechanged", onNotify);
+      await S.notifyChr.startNotifications();
+      S.rx = []; P = cand.driver;
+      log(`Trying ${cand.t.name}…`);
+      info = await P.start();
+      S.found = cand;
+      log(`${P.name} BMS answered over ${cand.t.name}`);
+      break;
+    } catch (e) {
+      log(`${cand.t.name}: ${e.message}`);
+      P = null;
+      try { S.notifyChr?.removeEventListener("characteristicvaluechanged", onNotify); await S.notifyChr?.stopNotifications(); } catch {}
+    }
+  }
+  if (!info) throw new Error(await describeDevice());
+  setConn("ok", "Connected");
+  document.getElementById("btnConnect").textContent = "Disconnect";
+  Object.assign(S.data, info);
+  renderInfo();
+  startPolling();
+}
+// The Windows Bluetooth stack often fails the first connection attempt ("Connection attempt failed"),
+// especially right after another app let go of the battery. Retry a few times with a fresh link each time.
+async function gattConnect(dev, tries = 4) {
+  for (let i = 1; ; i++) {
+    try {
+      if (dev.gatt.connected) dev.gatt.disconnect();   // drop a half-open link from an earlier failed attempt
+      return await withTimeout(dev.gatt.connect(), 15000, "connection timed out");
+    } catch (e) {
+      log(`Connection attempt ${i}/${tries} failed: ${e.message}`);
+      try { dev.gatt.disconnect(); } catch {}
+      if (i >= tries) throw new Error(`Could not open a Bluetooth link to ${dev.name || "the battery"} (${e.message}). ` + CONNECT_TIPS);
+      setConn("busy", `Connecting… (try ${i + 1}/${tries})`);
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+}
+const CONNECT_TIPS = "Check that: <b>1)</b> the phone app is fully closed, or turn off the phone's Bluetooth; " +
+  "<b>2)</b> the battery is not paired in Windows Settings → Bluetooth &amp; devices (remove it if it is: Web Bluetooth connects without pairing); " +
+  "<b>3)</b> the battery is awake and within a few metres; " +
+  "<b>4)</b> no other dashboard window is open. Then try again.";
+
+// No transport answered: list what the device offers so the BMS type can be identified, and say it plainly.
+async function describeDevice() {
+  const lines = [];
+  let services = [];
+  try { services = await S.server.getPrimaryServices(); } catch (e) { log("Could not list services: " + e.message); }
+  const short = (u) => /^0000(....)-0000-1000-8000-00805f9b34fb$/.test(u) ? u.slice(4, 8).toUpperCase() : u;
+  for (const s of services) {
+    let chars = [];
+    try { chars = await s.getCharacteristics(); } catch {}
+    const desc = chars.map((c) => {
+      const p = c.properties, f = [p.read && "read", p.write && "write", p.writeWithoutResponse && "writeNoResp", p.notify && "notify", p.indicate && "indicate"].filter(Boolean);
+      return `${short(c.uuid)} [${f.join(" ")}]`;
+    });
+    lines.push(`service ${short(s.uuid)}: ${desc.join(", ") || "no characteristics"}`);
+  }
+  log("Device " + (S.device.name || "(no name)") + " offers:\n  " + (lines.join("\n  ") || "none of the known BMS services"));
+  const ids = services.map((s) => short(s.uuid));
+  let hint = "";
+  if (services.some((s) => short(s.uuid) === "FFF0") && lines.some((l) => l.includes("FFFA"))) hint = " It looks like a TDT BMS (the type WattCycle uses): try the WattCycle dashboard.";
+  else if (!services.length) hint = " It offers none of the usual BMS services, so it is probably not the battery. Tick <b>Show all devices</b> and pick another entry.";
+  return `${S.device.name || "This device"} did not answer as a HumsiENK or JBD BMS` + (ids.length ? ` (services: ${ids.join(", ")}).` : ".") + hint +
+    " The <b>Bluetooth log</b> at the bottom lists what it offers.";
+}
+function onDisconnected() {
+  log("Disconnected");
+  stopPolling();
+  setConn("err", "Disconnected");
+  document.getElementById("btnConnect").textContent = "Connect battery";
+  if (S.device && S.wantConnected) {
+    notice("Connection lost. Reconnecting…");
+    setTimeout(() => openGatt().then(() => notice("")).catch((e) => {
+      if (S.device && document.getElementById("autoConnect").checked && CFG.deviceId) { log("Reconnect failed: " + e.message); autoTimer = setTimeout(autoConnect, 5000); }
+      else notice("Reconnect failed: " + e.message + ". Press Connect to try again.");
+    }), 1500);
+  }
+}
+function disconnect() {
+  S.wantConnected = false;
+  clearTimeout(autoTimer); autoTries = 0;
+  stopPolling();
+  if (S.device?.gatt.connected) S.device.gatt.disconnect();
+  S.device = null;
+  setConn("", "Idle");
+  document.getElementById("btnConnect").textContent = "Connect battery";
+  document.getElementById("devname").textContent = "Not connected";
+  relay({ device: "Not connected" });
+}
+
+/* ---------- polling ---------- */
+function startPolling() {
+  S.wantConnected = true;
+  stopPolling();
+  const ms = +document.getElementById("interval").value;
+  poll();
+  S.polling = setInterval(poll, ms);
+}
+function stopPolling() { clearInterval(S.polling); S.polling = null; }
+let misses = 0;
+async function poll() {
+  if (S.busy && Date.now() - S.busySince > 20000) { log("Previous poll stuck for 20 s, resetting"); S.busy = false; }
+  if (S.busy || !S.device?.gatt.connected) return;
+  S.busy = true; S.busySince = Date.now();
+  try {
+    if (!P) throw new Error("no BMS protocol detected");
+    const reading = await P.read();
+    if (misses >= 3) { setConn("ok", "Connected"); notice(""); }
+    misses = 0;
+    ingest(reading);
+  } catch (e) {
+    misses++;
+    log("Poll failed: " + e.message);
+    if (misses === 3) {
+      setConn("busy", "Battery not answering");
+      notice("The battery is not answering. Make sure the battery's phone app is closed (the BMS accepts only one connection at a time), then check the log below.");
+    }
+    if (misses >= 6) {
+      // Link is up on paper but dead in practice: drop it; onDisconnected() reconnects (and falls back to auto-connect retries).
+      log("No answer for 6 polls, forcing a Bluetooth reconnect");
+      misses = 0;
+      try { S.device.gatt.disconnect(); } catch {}
+    }
+  } finally { S.busy = false; }
+}
+
+/* ---------- demo mode ---------- */
+function startDemo() {
+  disconnect();
+  notice("Showing <b>simulated</b> data. Press <b>Connect battery</b> to read a real pack.");
+  setConn("busy", "Demo");
+  document.getElementById("devname").textContent = "Demo · Gentai 12.8 V 100 Ah LiFePO₄";
+  Object.assign(S.data, { bmsType: "HumsiENK (demo)", fw: "DEMO-V1.0", bmsName: "BMC4S-DEMO", mfgDate: null });
+  renderInfo();
+  S.demoMode = true;   // demo readings are flagged so the server never stores them in the history database
+  let soc = 78, t = 0;
+  const tick = () => {
+    t++;
+    const current = +(Math.sin(t / 25) * 18 + Math.sin(t / 4) * 2 - 4).toFixed(1);
+    soc = Math.max(5, Math.min(100, soc + current * 2 / 3600));
+    const base = 3.22 + soc / 100 * 0.12 + current * 0.0015;
+    const cells = [0, 1, 2, 3].map((i) => +(base + [0.004, -0.006, 0.011, 0][i] + (Math.random() - .5) * 0.003).toFixed(3));
+    const voltage = cells.reduce((a, b) => a + b, 0);
+    ingest({
+      cells, temps: [24.5 + Math.random(), 26 + Math.abs(current) / 10, 25.1],
+      current, voltage, remaining: soc, design: 100, soc: Math.round(soc), cycles: 142,
+      power: voltage * current, problem: 0, chargeFet: true, dischargeFet: true,
+      balancing: current > 8 ? [3] : [], alarms: [], soh: 98, heater: false,
+      tempNames: ["Cell 1", "Cell 2", "MOSFET"],
+    });
+  };
+  tick();
+  S.demo = setInterval(tick, +document.getElementById("interval").value);
+}
+function stopDemo() { S.demoMode = false; if (S.demo) { clearInterval(S.demo); S.demo = null; notice(""); } }
+
+/* ---------- ingest & render ---------- */
+/* Energy totals. The BMS measures one net current, so "in" is the integral of positive current and
+ * "out" the integral of negative current. Gaps longer than 30 s (sleep, disconnect) are not bridged. */
+const TOT = { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: Date.now(), lastT: 0 };
+function accumulate(d) {
+  const now = Date.now();
+  if (TOT.lastT && d.current != null) {
+    const h = Math.min(now - TOT.lastT, 30000) / 3.6e6;
+    const p = d.power ?? d.voltage * d.current;
+    if (d.current > 0) { TOT.inAh += d.current * h; TOT.inWh += p * h; }
+    else if (d.current < 0) { TOT.outAh -= d.current * h; TOT.outWh -= p * h; }
+  }
+  TOT.lastT = now;
+  return { totals: { inAh: TOT.inAh, inWh: TOT.inWh, outAh: TOT.outAh, outWh: TOT.outWh, since: TOT.since } };
+}
+function resetTotals() {
+  Object.assign(TOT, { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: Date.now() });
+  S.data.totals = { inAh: 0, inWh: 0, outAh: 0, outWh: 0, since: TOT.since };
+  relay({ data: { totals: S.data.totals } });
+  render();
+}
+
+function ingest(d) {
+  d = { ...d, ...accumulate(d) };
+  Object.assign(S.data, d);
+  const point = { t: Date.now(), current: d.current, voltage: d.voltage, power: d.power, soc: d.soc, ...(S.demoMode && { demo: true }) };
+  S.history.push(point);
+  if (S.history.length > MAX_HISTORY) S.history.shift();
+  document.getElementById("btnCsv").disabled = false;
+  render();
+  relay({ data: d, point, device: document.getElementById("devname").textContent, interval: +document.getElementById("interval").value });
+}
+
+/* ---------- remote viewer ---------- */
+let lastRemoteAt = 0, lastDataAt = 0, remoteInterval = 2000, remoteConn = null;
+function startViewer() {
+  ["btnConnect", "btnDemo", "interval", "btnResetTotals"].forEach((id) => (document.getElementById(id).style.display = "none"));
+  ["allDevices", "autoConnect"].forEach((id) => (document.getElementById(id).closest("label").style.display = "none"));
+  document.querySelector("details:has(#log)")?.closest("section")?.style.setProperty("display", "none");
+  const secs = (ms) => ms < 120000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
+  const showConn = () => {
+    const d = document.getElementById("conndot"), t = document.getElementById("conntext");
+    const now = Date.now();
+    const pcAge = lastRemoteAt ? now - lastRemoteAt : Infinity;     // any message, incl. 10 s heartbeat
+    const dataAge = lastDataAt ? now - lastDataAt : Infinity;       // actual battery readings
+    if (!lastRemoteAt) { d.className = "dot err"; t.textContent = "Waiting for dashboard PC"; notice("The dashboard PC hasn't sent anything yet. Check that the dashboard window is open there."); }
+    else if (pcAge > 75000) {
+      d.className = "dot err"; t.textContent = `PC window silent for ${secs(pcAge)}`;
+      notice("The dashboard window on the PC has stopped responding: it may be closed, the PC may be asleep, or the browser paused it. Showing the last readings received.");
+    } else if (remoteConn?.state === "ok" && dataAge > Math.max(15000, remoteInterval * 4)) {
+      d.className = "dot busy"; t.textContent = `No battery data for ${secs(dataAge)}`;
+      notice("");
+    } else { d.className = "dot" + (remoteConn?.state ? " " + remoteConn.state : ""); t.textContent = "Live · " + (remoteConn?.text || "--"); notice(""); }
+  };
+  const apply = (m) => {
+    if (m.at) lastRemoteAt = m.at;
+    if (m.dataAt) lastDataAt = m.dataAt;
+    if (m.point) lastDataAt = m.at || Date.now();
+    if (m.interval) remoteInterval = m.interval;
+    if (m.conn) remoteConn = m.conn;
+    if (m.device) document.getElementById("devname").textContent = m.device;
+    if (m.data) Object.assign(S.data, m.data);
+  };
+  const es = new EventSource("/api/stream");
+  es.addEventListener("snapshot", (e) => {
+    const s = JSON.parse(e.data);
+    S.data = {}; apply(s);
+    S.history = s.history || [];
+    document.getElementById("btnCsv").disabled = !S.history.length;
+    notice(s.at ? "" : "The dashboard PC hasn't sent any readings yet. Check that the dashboard window is open there and connected to the battery.");
+    renderInfo(); render(); showConn();
+  });
+  es.addEventListener("update", (e) => {
+    const m = JSON.parse(e.data);
+    apply(m);
+    if (m.point) {
+      S.history.push(m.point);
+      if (S.history.length > MAX_HISTORY) S.history.shift();
+      document.getElementById("btnCsv").disabled = false;
+      notice("");
+    }
+    if (m.data) { renderInfo(); render(); }
+    showConn();
+  });
+  es.onerror = () => { document.getElementById("conndot").className = "dot err"; document.getElementById("conntext").textContent = "Reconnecting to server…"; };
+  setInterval(showConn, 5000);
+}
+const fmt = (v, dp) => (v == null || Number.isNaN(v)) ? "--" : v.toFixed(dp);
+function setVal(id, v, unit) { document.getElementById(id).innerHTML = `${v}<small>${unit}</small>`; }
+
+function render() {
+  const d = S.data;
+  // SOC ring
+  const soc = Math.max(0, Math.min(100, d.soc ?? 0));
+  document.getElementById("socArc").setAttribute("stroke-dasharray", `${(soc / 100) * 251.3} 252`);
+  document.getElementById("soc").innerHTML = `${d.soc ?? "--"}<small style="font-size:18px;color:var(--text-secondary)">%</small>`;
+  document.getElementById("socMeta").textContent = `${fmt(d.remaining, 1)} / ${d.design ?? "--"} Ah remaining`;
+  let eta = "Idle";
+  if (d.current > 0.3 && d.design) eta = `Full in ~${hm((d.design - d.remaining) / d.current)}`;
+  else if (d.current < -0.3) eta = `Empty in ~${hm(d.remaining / -d.current)}`;
+  document.getElementById("eta").textContent = eta;
+
+  setVal("volt", fmt(d.voltage, 2), "V");
+  // Charge / discharge split of the single net current the BMS reports.
+  const has = d.current != null;
+  const pw = d.power ?? (has ? d.voltage * d.current : null);
+  const charging = d.current > 0.3, discharging = d.current < -0.3;
+  setVal("inA", has ? fmt(charging ? d.current : 0, 1) : "--", "A");
+  setVal("inW", has ? fmt(charging ? pw : 0, 0) : "--", "W");
+  setVal("outA", has ? fmt(discharging ? -d.current : 0, 1) : "--", "A");
+  setVal("outW", has ? fmt(discharging ? -pw : 0, 0) : "--", "W");
+  document.getElementById("flowIn").classList.toggle("active", charging);
+  document.getElementById("flowOut").classList.toggle("active", discharging);
+  const T = d.totals;
+  if (T) {
+    const since = new Date(T.since).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("inTot").textContent = `Total in: ${fmt(T.inAh, 2)} Ah · ${fmt(T.inWh, 1)} Wh since ${since}`;
+    document.getElementById("outTot").textContent = `Total out: ${fmt(T.outAh, 2)} Ah · ${fmt(T.outWh, 1)} Wh since ${since}`;
+  }
+  if (d.cells?.length) document.getElementById("voltMeta").textContent = `${d.cells.length} cells · avg ${fmt(d.voltage / d.cells.length, 3)} V`;
+
+  document.getElementById("cycles").textContent = d.cycles ?? "--";
+  infoRow("soh", d.soh != null ? d.soh + " %" : null);   // JBD doesn't report health: the row is hidden
+  document.getElementById("design").textContent = d.design != null ? d.design + " Ah" : "--";
+  document.getElementById("balancing").textContent = !d.balancing ? "--" : d.balancing.length ? "Cell " + d.balancing.join(", ") : "Idle";
+  document.getElementById("updated").textContent = new Date().toLocaleTimeString();
+
+  renderStatus(d);
+  renderTemps(d.temps || [], d.tempNames);
+  renderCells(d.cells || []);
+  renderTrend();
+}
+function hm(h) { if (!isFinite(h) || h < 0) return "--"; const m = Math.round(h * 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} m` : `${m} m`; }
+// Show an info row, or hide it (label too) when this BMS doesn't report that value.
+function infoRow(id, value) {
+  const dd = document.getElementById(id), dt = dd.previousElementSibling;
+  dd.textContent = value ?? "--";
+  dd.hidden = dt.hidden = value === null;
+}
+function renderInfo() {
+  const d = S.data;
+  infoRow("bmsType", d.bmsType);
+  infoRow("bmsName", d.bmsName || undefined);
+  infoRow("fw", d.fw || undefined);
+  infoRow("mfgDate", d.mfgDate);   // null = this BMS doesn't report it (HumsiENK): row hidden
+  relay({ data: { bmsType: d.bmsType, fw: d.fw, bmsName: d.bmsName, mfgDate: d.mfgDate } });
+}
+
+const ICON = {
+  good: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--good)"/><path d="M4.5 8.2l2.2 2.2 4.8-4.8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
+  warning: '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1.5l7 12.5H1z" fill="var(--warning)"/><path d="M8 6v4M8 11.8v.4" stroke="#1a1a19" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  critical: '<svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--critical)"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+function renderStatus(d) {
+  const items = [];
+  if (d.chargeFet !== undefined) {
+    items.push([d.chargeFet ? "good" : "critical", `Charge MOSFET ${d.chargeFet ? "on" : "off"}`]);
+    items.push([d.dischargeFet ? "good" : "critical", `Discharge MOSFET ${d.dischargeFet ? "on" : "off"}`]);
+  }
+  if (d.heater) items.push(["good", "Heater on"]);
+  if (d.alarms) {
+    // The driver already turned the BMS's flags into [severity, text] pairs.
+    if (!d.alarms.some(([k]) => k !== "good")) items.push(["good", "No protection alarms"]);
+    d.alarms.forEach((a) => items.push(a));
+  }
+  if (d.balancing?.length) items.push(["good", `Balancing cell ${d.balancing.join(", ")}`]);
+  if (d.cells?.length) {
+    const delta = (Math.max(...d.cells) - Math.min(...d.cells)) * 1000;
+    items.push([delta > 50 ? "critical" : delta > 20 ? "warning" : "good", `Cell imbalance ${delta.toFixed(0)} mV`]);
+  }
+  if (d.temps?.length) {
+    const tmax = Math.max(...d.temps);
+    items.push([tmax > 55 ? "critical" : tmax > 45 || Math.min(...d.temps) < 0 ? "warning" : "good", `Max temperature ${tmax.toFixed(1)} °C`]);
+  }
+  document.getElementById("statusList").innerHTML = items.map(([k, t]) => `<div class="status">${ICON[k]}<span>${t}</span></div>`).join("") || '<div class="sub">No data yet</div>';
+}
+function renderTemps(temps, names = []) {
+  // HumsiENK names its sensors; JBD just numbers its probes (placement depends on how the pack was built).
+  document.getElementById("temps").innerHTML = temps.length
+    ? temps.map((v, i) => `<div class="t"><div class="n">${names[i] || "Sensor " + (i + 1)}</div><div class="v">${v.toFixed(1)} °C</div></div>`).join("")
+    : '<div class="sub">No data yet</div>';
+}
+
+/* ---------- charts (hand-rolled SVG) ---------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.appendChild(e); return e; }
+function niceTicks(min, max, count = 4) {
+  if (min === max) { min -= 1; max += 1; }
+  const span = max - min, step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const t = []; for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toFixed(6));
+  return t;
+}
+
+function renderCells(cells) {
+  const box = document.getElementById("cellChart");
+  const stat = document.getElementById("cellStat");
+  const tbl = document.getElementById("cellTable");
+  if (!cells.length) { box.innerHTML = '<div class="sub">No data yet</div>'; return; }
+  const min = Math.min(...cells), max = Math.max(...cells);
+  stat.textContent = `min ${min.toFixed(3)} · max ${max.toFixed(3)} · Δ ${((max - min) * 1000).toFixed(0)} mV`;
+  tbl.innerHTML = "<tr><th>Cell</th><th>Voltage (V)</th><th>vs. avg (mV)</th></tr>" +
+    cells.map((v, i) => `<tr><td>${i + 1}</td><td>${v.toFixed(3)}</td><td>${((v - cells.reduce((a, b) => a + b) / cells.length) * 1000).toFixed(0)}</td></tr>`).join("");
+
+  const W = 520, H = 220, m = { l: 44, r: 8, t: 18, b: 24 };
+  const lo = Math.min(min - 0.02, 3.0), hi = Math.max(max + 0.02, 3.45);
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const y = (v) => m.t + (H - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Cell voltages" }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: "var(--grid)" }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(2);
+  });
+  const n = cells.length, slot = (W - m.l - m.r) / n, bw = Math.min(42, slot - 2);
+  const tip = makeTip(box);
+  cells.forEach((v, i) => {
+    const x = m.l + slot * i + (slot - bw) / 2, top = y(v), base = y(y0);
+    const h = Math.max(1, base - top), r = Math.min(4, h, bw / 2);
+    el("path", { d: `M${x},${base}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${base}Z`, fill: "var(--series-1)" }, svg);
+    if (v === max || v === min) {
+      el("text", { x: x + bw / 2, y: top - 5, "text-anchor": "middle", "font-size": 11, fill: "var(--text-secondary)" }, svg).textContent = (v === max ? "max " : "min ") + v.toFixed(3);
+    }
+    el("text", { x: x + bw / 2, y: H - 6, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, svg).textContent = i + 1;
+    const hit = el("rect", { x: m.l + slot * i, y: m.t, width: slot, height: H - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => showTip(tip, box, e, `<b>Cell ${i + 1}</b><br>${v.toFixed(3)} V`));
+    hit.addEventListener("pointerleave", () => (tip.style.display = "none"));
+  });
+}
+
+let trendMetric = "current";
+const METRICS = {
+  current: { title: "Current (A)", unit: "A", dp: 1, zero: true },
+  voltage: { title: "Pack voltage (V)", unit: "V", dp: 2 },
+  power: { title: "Power (W)", unit: "W", dp: 0, zero: true },
+  soc: { title: "State of charge (%)", unit: "%", dp: 0 },
+};
+function renderTrend() {
+  const box = document.getElementById("trendChart");
+  const M = METRICS[trendMetric];
+  document.getElementById("trendTitle").textContent = M.title;
+  const pts = S.history.filter((p) => p[trendMetric] != null);
+  if (pts.length < 2) { box.innerHTML = '<div class="sub" style="padding:40px 0">Collecting data…</div>'; return; }
+  const vals = pts.map((p) => p[trendMetric]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (M.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const W = 720, H = 240, m = { l: 48, r: 12, t: 10, b: 24 };
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  const x = (t) => m.l + (W - m.l - m.r) * ((t - t0) / Math.max(1, t1 - t0));
+  const y = (v) => m.t + (H - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": M.title + " over time" }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 && M.zero ? "var(--text-muted)" : "var(--grid)", "stroke-width": t === 0 && M.zero ? 1 : 1 }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(Math.abs(y1 - y0) < 5 ? 2 : 0);
+  });
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => {
+    el("text", { x: x(t), y: H - 6, "text-anchor": ["start", "middle", "end"][i] }, ax).textContent = new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  });
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p[trendMetric]).toFixed(1)}`).join("");
+  const base = y(M.zero ? 0 : y0);
+  const area = `${line}L${x(t1)},${base}L${x(t0)},${base}Z`;
+  document.getElementById("trendLegend").style.visibility = M.zero ? "visible" : "hidden";
+  // Signed metrics (current, power): charge above zero in green, discharge below zero in orange.
+  const colorOf = (v) => !M.zero ? "var(--series-1)" : v >= 0 ? "var(--charge)" : "var(--discharge)";
+  if (M.zero) {
+    const defs = el("defs", {}, svg);
+    el("rect", { x: 0, y: 0, width: W, height: base }, el("clipPath", { id: "clipIn" }, defs));
+    el("rect", { x: 0, y: base, width: W, height: H - base }, el("clipPath", { id: "clipOut" }, defs));
+    [["clipIn", "charge"], ["clipOut", "discharge"]].forEach(([clip, c]) => {
+      const g = el("g", { "clip-path": `url(#${clip})` }, svg);
+      el("path", { d: area, fill: `var(--${c}-soft)` }, g);
+      el("path", { d: line, fill: "none", stroke: `var(--${c})`, "stroke-width": 2, "stroke-linejoin": "round" }, g);
+    });
+  } else {
+    el("path", { d: area, fill: "var(--series-1-soft)" }, svg);
+    el("path", { d: line, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  }
+  const last = pts[pts.length - 1];
+  el("circle", { cx: x(last.t), cy: y(last[trendMetric]), r: 4, fill: colorOf(last[trendMetric]), stroke: "var(--surface-1)", "stroke-width": 2 }, svg);
+
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--text-muted)", "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const tip = makeTip(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * (W / r.width);
+    const tt = t0 + ((sx - m.l) / (W - m.l - m.r)) * (t1 - t0);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.t - tt) < Math.abs(best.t - tt)) best = p;
+    cross.setAttribute("x1", x(best.t)); cross.setAttribute("x2", x(best.t)); cross.setAttribute("visibility", "visible");
+    const bv = best[trendMetric];
+    dot.setAttribute("cx", x(best.t)); dot.setAttribute("cy", y(bv)); dot.setAttribute("fill", colorOf(bv)); dot.setAttribute("visibility", "visible");
+    const dir = !M.zero ? "" : bv > 0 ? " · charging" : bv < 0 ? " · discharging" : " · idle";
+    showTip(tip, box, e, `${new Date(best.t).toLocaleTimeString()}<br><b>${Math.abs(bv).toFixed(M.dp)} ${M.unit}</b>${dir}`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  document.getElementById("trendStat").textContent =
+    `min ${Math.min(...vals).toFixed(M.dp)} · avg ${avg.toFixed(M.dp)} · max ${Math.max(...vals).toFixed(M.dp)} ${M.unit} · ${pts.length} samples`;
+}
+function makeTip(box) { const t = document.createElement("div"); t.className = "tip"; box.appendChild(t); return t; }
+function showTip(tip, box, e, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const r = box.getBoundingClientRect();
+  let left = e.clientX - r.left + 12;
+  if (left + tip.offsetWidth > r.width) left = e.clientX - r.left - tip.offsetWidth - 12;
+  tip.style.left = left + "px"; tip.style.top = (e.clientY - r.top - tip.offsetHeight - 8) + "px";
+}
+
+/* ---------- history (history.db via serve.js, one row per 30 minutes) ---------- */
+const HB = 30 * 60 * 1000;
+const H = { range: "day", anchor: new Date(), metric: "soc", rows: [], from: 0, to: 0, error: "" };
+const HMET = {
+  soc: { title: "State of charge (%)", avg: "soc_avg", lo: "soc_min", hi: "soc_max", dp: 0, unit: "%" },
+  voltage: { title: "Pack voltage (V)", avg: "v_avg", lo: "v_min", hi: "v_max", dp: 2, unit: "V" },
+  current: { title: "Current (A)", avg: "i_avg", lo: "i_min", hi: "i_max", dp: 1, unit: "A", zero: true },
+  temp: { title: "Max temperature (°C)", avg: "temp_max", dp: 1, unit: "°C" },
+};
+const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+function histBounds() {
+  const a = new Date(H.anchor);
+  if (H.range === "day") { const f = dayStart(a); return [f, addDays(f, 1)]; }
+  if (H.range === "week") { const f = addDays(dayStart(a), -((a.getDay() + 6) % 7)); return [f, addDays(f, 7)]; }   // Monday-based
+  return [new Date(a.getFullYear(), a.getMonth(), 1), new Date(a.getFullYear(), a.getMonth() + 1, 1)];
+}
+function histShift(dir) {
+  const a = new Date(H.anchor);
+  if (H.range === "day") H.anchor = addDays(a, dir);
+  else if (H.range === "week") H.anchor = addDays(a, 7 * dir);
+  else H.anchor = new Date(a.getFullYear(), a.getMonth() + dir, 1);
+  loadHistory();
+}
+function histLabel(from, to) {
+  const o = { month: "short", day: "numeric" };
+  if (H.range === "day") return from.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  if (H.range === "week") return `${from.toLocaleDateString([], o)} – ${addDays(to, -1).toLocaleDateString([], o)}, ${from.getFullYear()}`;
+  return from.toLocaleDateString([], { month: "long", year: "numeric" });
+}
+async function loadHistory() {
+  const [from, to] = histBounds();
+  H.from = +from; H.to = +to;
+  document.getElementById("histLabel").textContent = histLabel(from, to);
+  document.getElementById("histNext").disabled = H.to > Date.now();
+  try {
+    const r = await fetch(`/api/history?from=${H.from}&to=${H.to}`, { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    if (H.from !== +from) return;   // user moved on while this was loading
+    H.rows = j.rows || []; H.error = "";
+  } catch (e) { H.rows = []; H.error = e.message; }
+  renderHistory();
+}
+// x-axis labels: every 3 h for a day; one per day (at noon, centred under the day) for week/month.
+function histTicks() {
+  const out = [];
+  if (H.range === "day") {
+    for (let h = 0; h < 24; h += 3) { const d = new Date(H.from); d.setHours(h); out.push({ t: +d, s: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }); }
+  } else {
+    for (let d = new Date(H.from); +d < H.to; d = addDays(d, 1)) {
+      const day = d.getDate();
+      if (H.range === "month" && !(day === 1 || day % 5 === 0)) continue;
+      const noon = new Date(d); noon.setHours(12);
+      out.push({ t: +noon, s: H.range === "week" ? d.toLocaleDateString([], { weekday: "short", day: "numeric" }) : d.toLocaleDateString([], { month: "short", day: "numeric" }) });
+    }
+  }
+  return out;
+}
+const fmtE = (wh) => Math.abs(wh) >= 1000 ? `${(wh / 1000).toFixed(2)} kWh` : `${wh.toFixed(0)} Wh`;
+function histWhen(t0, t1) {
+  const hm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (t1 - t0 > HB) return new Date(t0).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return (H.range === "day" ? "" : new Date(t0).toLocaleDateString([], { month: "short", day: "numeric" }) + " ") + `${hm(t0)}–${hm(t1)}`;
+}
+
+function renderHistory() {
+  const rows = H.rows, M = HMET[H.metric];
+  document.getElementById("histCsv").disabled = !rows.length;
+  document.getElementById("histLineTitle").textContent = M.title;
+  const empty = (msg) => ['histEnergy', 'histLine'].forEach((id) => (document.getElementById(id).innerHTML = `<div class="sub" style="padding:40px 0">${msg}</div>`));
+  const sumEl = document.getElementById("histSum");
+  if (!rows.length) {
+    sumEl.innerHTML = "";
+    empty(H.error ? "Could not load history: " + H.error
+      : "No history for this period. A summary is saved every 30 minutes while the dashboard is connected to the battery (demo data is not saved).");
+    return;
+  }
+
+  // Summary tiles
+  const sum = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  const mn = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null); return v.length ? Math.min(...v) : null; };
+  const mx = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null); return v.length ? Math.max(...v) : null; };
+  const inWh = sum("in_wh"), outWh = sum("out_wh"), inAh = sum("in_ah"), outAh = sum("out_ah");
+  const slots = Math.round((Math.min(H.to, Date.now()) - H.from) / HB);
+  const tiles = [
+    ["Charged in", fmtE(inWh), `${inAh.toFixed(1)} Ah`],
+    ["Discharged out", fmtE(outWh), `${outAh.toFixed(1)} Ah`],
+    ["Net", (inWh - outWh >= 0 ? "+" : "−") + fmtE(Math.abs(inWh - outWh)), (inAh - outAh >= 0 ? "+" : "−") + Math.abs(inAh - outAh).toFixed(1) + " Ah"],
+    ["SOC range", mn("soc_min") != null ? `${fmt(mn("soc_min"), 0)}–${fmt(mx("soc_max"), 0)} %` : "--", ""],
+    ["Voltage range", mn("v_min") != null ? `${fmt(mn("v_min"), 2)}–${fmt(mx("v_max"), 2)} V` : "--", ""],
+    ["Max temperature", mx("temp_max") != null ? `${fmt(mx("temp_max"), 1)} °C` : "--", mx("cell_delta") != null ? `max cell Δ ${fmt(mx("cell_delta"), 0)} mV` : ""],
+    ["Recorded", `${rows.length} × 30 min`, slots > 0 ? `${Math.min(100, Math.round(rows.length / slots * 100))} % of the period so far` : ""],
+  ];
+  sumEl.innerHTML = tiles.map(([n, v, s]) => `<div class="t"><div class="n">${n}</div><div class="v">${v}</div><div class="s">${s || "&nbsp;"}</div></div>`).join("");
+
+  // Energy bins: 30-minute bars for a day, daily bars for week/month.
+  const bins = [];
+  if (H.range === "day") for (let t = H.from; t < H.to; t += HB) bins.push({ t0: t, t1: t + HB });
+  else for (let d = new Date(H.from); +d < H.to; d = addDays(d, 1)) bins.push({ t0: +d, t1: +addDays(d, 1) });
+  bins.forEach((b) => Object.assign(b, { inWh: 0, outWh: 0, inAh: 0, outAh: 0 }));
+  let bi = 0;
+  for (const r of rows) {
+    while (bi < bins.length - 1 && r.t >= bins[bi].t1) bi++;
+    const b = bins[bi];
+    if (r.t < b.t0 || r.t >= b.t1) continue;
+    b.inWh += r.in_wh || 0; b.outWh += r.out_wh || 0; b.inAh += r.in_ah || 0; b.outAh += r.out_ah || 0;
+  }
+  document.getElementById("histEnergyTitle").textContent = `Energy in / out per ${H.range === "day" ? "30 min" : "day"} (Wh)`;
+  renderEnergyChart(bins);
+  renderHistLine(rows, M);
+}
+
+function histFrame(box, lo, hi, label) {
+  const W = 560, Ht = 220, m = { l: 48, r: 10, t: 10, b: 24 };
+  const ticks = niceTicks(lo, hi, 4), y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const x = (t) => m.l + (W - m.l - m.r) * ((t - H.from) / (H.to - H.from));
+  const y = (v) => m.t + (Ht - m.t - m.b) * (1 - (v - y0) / (y1 - y0));
+  box.innerHTML = "";
+  const svg = el("svg", { viewBox: `0 0 ${W} ${Ht}`, role: "img", "aria-label": label }, box);
+  const ax = el("g", { class: "axis" }, svg);
+  const span = Math.abs(y1 - y0);
+  ticks.forEach((t) => {
+    el("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 && lo < 0 ? "var(--text-muted)" : "var(--grid)" }, ax);
+    el("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, ax).textContent = t.toFixed(span < 5 ? 2 : 0);
+  });
+  histTicks().forEach(({ t, s }) => (el("text", { x: x(t), y: Ht - 6, "text-anchor": "middle" }, ax).textContent = s));
+  return { svg, W, Ht, m, x, y, y0 };
+}
+
+function renderEnergyChart(bins) {
+  const box = document.getElementById("histEnergy");
+  const hi = Math.max(1, ...bins.map((b) => b.inWh)), lo = -Math.max(1, ...bins.map((b) => b.outWh));
+  const { svg, W, Ht, m, x, y } = histFrame(box, lo, hi, "Energy charged in and discharged out");
+  const zero = y(0), tip = makeTip(box);
+  bins.forEach((b) => {
+    const x0 = x(b.t0), w = x(b.t1) - x0, bw = Math.max(1, w * 0.72), bx = x0 + (w - bw) / 2;
+    if (b.inWh > 0) el("rect", { x: bx, y: y(b.inWh), width: bw, height: Math.max(1, zero - y(b.inWh)), rx: Math.min(2, bw / 2), fill: "var(--charge)" }, svg);
+    if (b.outWh > 0) el("rect", { x: bx, y: zero, width: bw, height: Math.max(1, y(-b.outWh) - zero), rx: Math.min(2, bw / 2), fill: "var(--discharge)" }, svg);
+    const hit = el("rect", { x: x0, y: m.t, width: w, height: Ht - m.t - m.b, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => showTip(tip, box, e,
+      `<b>${histWhen(b.t0, b.t1)}</b><br>In: ${fmtE(b.inWh)} · ${b.inAh.toFixed(1)} Ah<br>Out: ${fmtE(b.outWh)} · ${b.outAh.toFixed(1)} Ah`));
+    hit.addEventListener("pointerleave", () => (tip.style.display = "none"));
+  });
+}
+
+function renderHistLine(rows, M) {
+  const box = document.getElementById("histLine");
+  const pts = rows.filter((r) => r[M.avg] != null);
+  if (!pts.length) { box.innerHTML = '<div class="sub" style="padding:40px 0">No data for this metric.</div>'; return; }
+  const all = pts.flatMap((r) => [r[M.avg], M.lo ? r[M.lo] : null, M.hi ? r[M.hi] : null]).filter((v) => v != null);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (M.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (H.metric === "soc") { lo = Math.max(0, lo); hi = Math.min(100, Math.max(hi, lo + 1)); }
+  const { svg, W, Ht, m, x, y } = histFrame(box, lo, hi, M.title + " history");
+  // Split into runs of consecutive half hours so gaps (battery not connected) show as gaps.
+  const runs = [];
+  pts.forEach((r, i) => { if (!i || r.t - pts[i - 1].t > HB) runs.push([]); runs[runs.length - 1].push(r); });
+  const cx = (r) => x(r.t + HB / 2);
+  for (const run of runs) {
+    if (M.lo && M.hi && run.every((r) => r[M.lo] != null && r[M.hi] != null)) {
+      const top = run.map((r) => `${cx(r).toFixed(1)},${y(r[M.hi]).toFixed(1)}`), bot = run.slice().reverse().map((r) => `${cx(r).toFixed(1)},${y(r[M.lo]).toFixed(1)}`);
+      if (run.length > 1) el("path", { d: `M${top.join("L")}L${bot.join("L")}Z`, fill: "var(--series-1-soft)" }, svg);
+    }
+    if (run.length === 1) el("circle", { cx: cx(run[0]), cy: y(run[0][M.avg]), r: 2.5, fill: "var(--series-1)" }, svg);
+    else el("path", { d: run.map((r, i) => `${i ? "L" : "M"}${cx(r).toFixed(1)},${y(r[M.avg]).toFixed(1)}`).join(""), fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  }
+  const cross = el("line", { y1: m.t, y2: Ht - m.b, stroke: "var(--text-muted)", "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const dot = el("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }, svg);
+  const tip = makeTip(box);
+  const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: Ht - m.t - m.b, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * (W / r.width);
+    const tt = H.from + ((sx - m.l) / (W - m.l - m.r)) * (H.to - H.from);
+    let best = pts[0]; for (const p of pts) if (Math.abs(p.t + HB / 2 - tt) < Math.abs(best.t + HB / 2 - tt)) best = p;
+    cross.setAttribute("x1", cx(best)); cross.setAttribute("x2", cx(best)); cross.setAttribute("visibility", "visible");
+    dot.setAttribute("cx", cx(best)); dot.setAttribute("cy", y(best[M.avg])); dot.setAttribute("visibility", "visible");
+    const range = M.lo && best[M.lo] != null ? `<br>min ${best[M.lo].toFixed(M.dp)} · max ${best[M.hi].toFixed(M.dp)} ${M.unit}` : "";
+    showTip(tip, box, e, `${histWhen(best.t, best.t + HB)}<br><b>${best[M.avg].toFixed(M.dp)} ${M.unit}</b>${M.lo ? " avg" : ""}${range}`);
+  });
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+}
+
+function exportHistoryCsv() {
+  const cols = ["t", "samples", "v_avg", "v_min", "v_max", "i_avg", "i_min", "i_max", "p_avg", "soc_avg", "soc_min", "soc_max", "soc_end", "temp_max", "cell_delta", "in_ah", "in_wh", "out_ah", "out_wh"];
+  const num = (v) => v == null ? "" : typeof v === "number" ? +v.toFixed(4) : v;
+  const lines = [["period_start", ...cols.slice(1)].join(",")]
+    .concat(H.rows.map((r) => [new Date(r.t).toISOString(), ...cols.slice(1).map((c) => num(r[c]))].join(",")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = `gentai-history-${H.range}-${new Date(H.from).toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- CSV export ---------- */
+function exportCsv() {
+  const rows = [["time", "voltage_V", "current_A", "power_W", "soc_pct"]]
+    .concat(S.history.map((p) => [new Date(p.t).toISOString(), p.voltage, p.current, p.power?.toFixed(1), p.soc]));
+  const blob = new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `gentai-${new Date().toISOString().slice(0, 19).replace(/:/g, "")}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- wiring ---------- */
+document.getElementById("btnConnect").onclick = () => (S.device?.gatt.connected ? disconnect() : connect());
+document.getElementById("btnDemo").onclick = () => (S.demo ? (stopDemo(), setConn("", "Idle")) : startDemo());
+document.getElementById("btnCsv").onclick = exportCsv;
+document.getElementById("btnResetTotals").onclick = resetTotals;
+document.querySelectorAll("#histRange button").forEach((b) => b.onclick = () => {
+  H.range = b.dataset.r;
+  document.querySelectorAll("#histRange button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  loadHistory();
+});
+document.querySelectorAll("#histMetric button").forEach((b) => b.onclick = () => {
+  H.metric = b.dataset.h;
+  document.querySelectorAll("#histMetric button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  renderHistory();
+});
+document.getElementById("histPrev").onclick = () => histShift(-1);
+document.getElementById("histNext").onclick = () => histShift(1);
+document.getElementById("histToday").onclick = () => { H.anchor = new Date(); loadHistory(); };
+document.getElementById("histCsv").onclick = exportHistoryCsv;
+loadHistory();
+// Refresh the history while it shows the current period (the half hour in progress updates live).
+setInterval(() => { if (H.to > Date.now() && !document.hidden) loadHistory(); }, 60000);
+document.getElementById("interval").onchange = () => {
+  saveConfig({ interval: +document.getElementById("interval").value });
+  if (S.polling) startPolling();
+  if (S.demo) { stopDemo(); startDemo(); }
+};
+document.getElementById("allDevices").onchange = (e) => saveConfig({ allDevices: e.target.checked });
+document.getElementById("autoConnect").onchange = (e) => {
+  saveConfig({ autoConnect: e.target.checked });
+  if (e.target.checked) autoConnect(); else { clearTimeout(autoTimer); autoTries = 0; }
+};
+document.querySelectorAll("#trendTabs button").forEach((b) => b.onclick = () => {
+  trendMetric = b.dataset.m;
+  document.querySelectorAll("#trendTabs button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  saveConfig({ trendMetric });
+  renderTrend();
+});
+render();
+fetch("/api/session", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ role: "local" })).then(async ({ role }) => {
+  ROLE = role === "remote" ? "remote" : "local";
+  if (ROLE === "remote") return startViewer();
+  await loadConfig();
+  render();
+  // Keep this window alive for remote viewers: a held Web Lock stops Chrome/Edge from freezing the page,
+  // and the heartbeat lets viewers tell "window paused/closed" apart from "battery not answering".
+  navigator.locks?.request("gentai-keepalive", () => new Promise(() => {})).catch(() => {});
+  setInterval(() => relay({ hb: 1 }), 10000);
+  relay({ device: document.getElementById("devname").textContent, conn: { state: "", text: "Idle" } });
+  if (!navigator.bluetooth) notice("Web Bluetooth is not available in this browser. Use <b>Chrome</b> or <b>Edge</b> and open the page from <code>http://localhost</code>. You can still try <b>Demo data</b>.");
+  else autoConnect();
+});
+</script>
+</body>
+</html>
